@@ -22,6 +22,9 @@ class ConfluxPortal {
 
   async sendTransaction (params) {
     return new Promise((resolve, reject) => {
+
+      // await this.conflux.send('cfx_sendTransaction')
+
       this.conflux.sendAsync({
         method: 'cfx_sendTransaction',
         params: [params],
@@ -29,6 +32,7 @@ class ConfluxPortal {
         gasPrice: '0x09184e72a000', // customizable by user during ConfluxPortal confirmation.
         gas: '0x2710',  // customizable by user during ConfluxPortal confirmation.
         value: '0x00',
+        storageLimit: '0x1000',
       }, (err, data) => {
         if (err) {
           reject(err)

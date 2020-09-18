@@ -7,21 +7,29 @@ class ConfluxForm extends PureComponent {
     event.preventDefault()
     const form = document.querySelector(`#form-${this.props.method.name}`)
     const params = []
+    let value = 0
+
     for (let element of form.elements) {
+      if (element.id == 'form-payable') {
+        value = parseInt(element.value)
+        continue
+      }
       if (element.type !== 'submit') {
         params.push(element.value)
       }
     }
-    this.props.onSubmit(params)
+
+    this.props.onSubmit(params, value)
   }
 
   render () {
     const { method } = this.props
 
     let formInputs
-    if (!method.inputs || !method.inputs.length) {
-      formInputs = <p className="text-muted">(No inputs)</p>  
+    if (!method.inputs || !method.inputs.length && !method.payable) {
+      formInputs = <p className="text-muted">(No inputs)</p>
     } else {
+
       formInputs = method.inputs.map(field => {
         let label = field.name
         if (!label) {
@@ -43,6 +51,18 @@ class ConfluxForm extends PureComponent {
 
     return (
       <form id={`form-${method.name}`} className="mt-3" onSubmit={this.onSubmit}>
+        {method.payable &&
+          <div key={`input-field-payable`} className="form-group">
+          <label htmlFor={`form-payable`}>amount to send</label>
+          <input
+            id={`form-payable`}
+            name={`payable`}
+            className="form-control"
+            placeholder={`Type: CFX`}
+            type="number"
+          />
+        </div>
+        }
         {formInputs}
         <button type="submit" className="btn btn-primary">
           { method.stateMutability === 'view' ? 'Query Data' : 'Push Transaction' }
@@ -70,7 +90,7 @@ class ContractMethods extends PureComponent {
       return (
         <ConfluxForm
           method={selected}
-          onSubmit={params => this.props.onSubmit(selected, params)}
+          onSubmit={(params, value) => this.props.onSubmit(selected, params, value)}
         />
       )
     }
@@ -157,12 +177,21 @@ export default class ConfluxContract extends PureComponent {
     error: '',
   }
 
-  onSubmit = async (selected, params) => {
+  onSubmit = async (selected, params, value_cfx) => {
     if (selected.type === 'event') {
       // query events
       this.setState({ loading: true })
       try {
-        const result = await this.props.contract[selected.name].call(...Array(selected.inputs.length)).getLogs()
+        // confluxPortal.conflux.sendAsync({
+        //   method: 'cfx_epochNumber',
+        //   params: ['latest_state'],
+        // }, function (err, ));
+        const to_hex = await confluxPortal.conflux.send('cfx_epochNumber', ['latest_state']);
+        const to = parseInt(to_hex, 16) - 5; // keep some distance
+        const from = to - 9999;
+        const from_hex = from.toString(16);
+
+        const result = await this.props.contract[selected.name].call(...Array(selected.inputs.length)).getLogs({ fromEpoch: from, toEpoch: to })
         this.setState({
           loading: false, result:
           JSON.stringify(result.map(x => ({ epoch: x.epochNumber, ...x.params.object })), null, 2),
@@ -186,11 +215,33 @@ export default class ConfluxContract extends PureComponent {
       // write
       this.setState({ loading: true })
       try {
+        console.log('value_cfx', value_cfx);
+        const value_drip = window.ConfluxJSSDK.util.unit.fromCFXToDrip(value_cfx);
+        console.log('value_drip', value_drip);
+        const value_drip_hex = window.ConfluxJSSDK.util.format.hexUInt(value_drip);
+        console.log('value_drip_hex', value_drip_hex);
+
+
         const called = this.props.contract[selected.name].call(...params)
+
+        const estimate = await confluxPortal.conflux.send('cfx_estimateGasAndCollateral', [{
+          from: confluxPortal.getAccount(),
+          to: called.to,
+          data: called.data,
+          // value: '0x8AC7230489E80000',
+          // value: '0x8AC7230489E80000',
+          value: value_drip_hex,
+        }]);
+
         const result = await confluxPortal.sendTransaction({
           from: confluxPortal.getAccount(),
           to: called.to,
           data: called.data,
+          // value: '0x8AC7230489E80000',
+          value: value_drip_hex,
+          // storageLimit: '80',
+          gas: estimate.gasUsed,
+          storageLimit: estimate.storageCollateralized,
         })
         this.setState({ loading: false, result: `Transaction pushed with hash: ${result.result}`, error: '' })
       } catch (err) {

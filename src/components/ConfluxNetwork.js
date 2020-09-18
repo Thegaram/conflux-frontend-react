@@ -5,7 +5,7 @@ export default class ConfluxNetwork extends PureComponent {
   render() {
     return (
       <div className="card pt-3">
-        <img src={logo} className="card-img-top w-75 m-auto" alt="Conflux" />
+        <img src={logo} className="card-img-top w-50 m-auto" alt="Conflux" />
         <div className="card-body">
           <h5 className="card-title">Conflux Frontend</h5>
           <p className="card-text">This is a demo frontend project for Conflux.</p>
